@@ -54,11 +54,27 @@ Dragon = (function(_super) {
 
   Dragon.prototype._mesh = null;
 
+  Dragon.prototype._radiusSegments = null;
+
+  Dragon.prototype._heighSegments = null;
+
+  Dragon.prototype._distanceMax = null;
+
   Dragon.prototype._lines = null;
 
+  Dragon.prototype._lastMouse = null;
+
+  Dragon.prototype._initialized = false;
+
   function Dragon() {
+    var height;
     THREE.Object3D.call(this);
-    this._geom = new THREE.CylinderGeometry(20, 20, 100, 8, 5);
+    height = 100;
+    this._radiusSegments = 20;
+    this._heighSegments = 10;
+    this._distanceMax = height / this._heighSegments;
+    this._geom = new THREE.CylinderGeometry(20, 20, height, this._radiusSegments, this._heighSegments, true);
+    this._geom.applyMatrix(new THREE.Matrix4().makeTranslation(0, 50, 0));
     this._material = new THREE.MeshBasicMaterial({
       color: 0x0044cc,
       wireframe: true
@@ -67,32 +83,72 @@ Dragon = (function(_super) {
     this.add(this._mesh);
     this.rotation.x = .5;
     this._sortVertices();
+    this._lastMouse = {
+      x: stage.mouse.x - stage.size.w * .5,
+      y: stage.mouse.y - stage.size.h * .5
+    };
+    updateManager.register(this);
   }
 
   Dragon.prototype._sortVertices = function() {
-    var i, idx, j, v, vertice, _i, _j, _len, _ref, _results;
+    var i, idx, j, line, v, _i, _ref, _results;
     this._lines = [];
-    console.log(this._geom.vertices.length);
-    _ref = this._geom.vertices;
-    for (idx = _i = 0, _len = _ref.length; _i < _len; idx = ++_i) {
-      vertice = _ref[idx];
-      console.log("idx", idx, "::", vertice.x, vertice.y, vertice.z);
-    }
     _results = [];
-    for (i = _j = 0; _j <= 8; i = ++_j) {
+    for (i = _i = 0, _ref = this._radiusSegments; 0 <= _ref ? _i <= _ref : _i >= _ref; i = 0 <= _ref ? ++_i : --_i) {
       console.log(i);
+      line = [];
+      this._lines.push(line);
       _results.push((function() {
-        var _k, _results1;
+        var _j, _ref1, _results1;
         _results1 = [];
-        for (j = _k = 0; _k <= 5; j = ++_k) {
-          idx = i + j * 8 + j;
+        for (j = _j = 0, _ref1 = this._heighSegments; 0 <= _ref1 ? _j <= _ref1 : _j >= _ref1; j = 0 <= _ref1 ? ++_j : --_j) {
+          idx = i + j * this._radiusSegments + j;
           v = this._geom.vertices[idx];
+          line.push(v);
           _results1.push(console.log(">", idx, "{x: ", v.x, ", y: ", v.y, ", z: ", v.z, "}"));
         }
         return _results1;
       }).call(this));
     }
     return _results;
+  };
+
+  Dragon.prototype.update = function() {
+    var dx, dy, i, lastVertice, length, line, vTrans, vertice, _i, _j, _len, _ref, _ref1;
+    if (!this._initialized) {
+      if (stage.mouse.x !== 0 && stage.mouse.y !== 0) {
+        this._lastMouse.x = stage.mouse.x;
+        this._lastMouse.y = stage.mouse.y;
+        this._initialized = true;
+      }
+      return;
+    }
+    dx = stage.mouse.x - this._lastMouse.x;
+    dy = -stage.mouse.y + this._lastMouse.y;
+    this._lastMouse.x = stage.mouse.x;
+    this._lastMouse.y = stage.mouse.y;
+    _ref = this._lines;
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      line = _ref[_i];
+      for (i = _j = 0, _ref1 = line.length - 1; 0 <= _ref1 ? _j <= _ref1 : _j >= _ref1; i = 0 <= _ref1 ? ++_j : --_j) {
+        vertice = line[i];
+        if (i === 0) {
+          vertice.x += dx;
+          vertice.y += dy;
+          vertice.z += dy * .5;
+        } else {
+          lastVertice = line[i - 1];
+          vTrans = new THREE.Vector3(0, 0, 0);
+          vTrans.subVectors(vertice, lastVertice);
+          length = vTrans.length();
+          length += (this._distanceMax - length) * .25;
+          vTrans.normalize();
+          vTrans.setLength(length);
+          vertice.addVectors(lastVertice, vTrans);
+        }
+      }
+    }
+    return this._geom.verticesNeedUpdate = true;
   };
 
   return Dragon;
@@ -174,8 +230,6 @@ StageSingleton = (function() {
   function StageSingleton() {}
 
   StageInstance = (function() {
-    StageInstance.prototype.lastMouse = null;
-
     StageInstance.prototype.mouse = null;
 
     StageInstance.prototype.size = null;
@@ -185,10 +239,6 @@ StageSingleton = (function() {
     function StageInstance() {
       this._onResize = __bind(this._onResize, this);
       this._onMouseMove = __bind(this._onMouseMove, this);
-      this.lastMouse = {
-        x: 0.0,
-        y: 0.0
-      };
       this.mouse = {
         x: 0.0,
         y: 0.0
@@ -204,8 +254,6 @@ StageSingleton = (function() {
     }
 
     StageInstance.prototype._onMouseMove = function(e) {
-      this.lastMouse.x = this.mouse.x;
-      this.lastMouse.y = this.mouse.y;
       this.mouse.x = e.clientX;
       return this.mouse.y = e.clientY;
     };
@@ -318,7 +366,7 @@ var Main;
 Main = (function() {
   function Main() {
     engine.init(document.getElementById("scene"));
-    engine.scene.add(new Axis());
+    engine.scene.add(new Axis(500));
     engine.scene.add(new Dragon());
     updateManager.start();
   }
